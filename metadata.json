@@ -1,0 +1,6 @@
+{
+  "name": "Boothie",
+  "description": "AI portrait booth: upload one selfie, preview watermarked looks for free, and download clean HD portraits with instant selfie auto-deletion.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
