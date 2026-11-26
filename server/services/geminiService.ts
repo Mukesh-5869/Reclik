@@ -1,4 +1,11 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import sharp from 'sharp';
+
+const DEFAULT_IMAGE_MODEL = process.env.IMAGE_MODEL || 'gemini-2.5-flash-image';
+const DEFAULT_CHECK_MODEL = process.env.CHECK_MODEL || 'gemini-2.5-flash';
+
+const LOOK_PROMPT_SUFFIX =
+  'Keep the exact face, skin tone, expression, outfit, pose and background content unchanged. Change only lighting and camera style. Match the original aspect ratio.';
 
 function getAiClient(): GoogleGenAI | null {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -11,6 +18,22 @@ function getAiClient(): GoogleGenAI | null {
       },
     },
   });
+}
+
+function extractGeminiErrorDetails(err: unknown): { status?: number | string; message: string } {
+  if (err && typeof err === 'object') {
+    const anyErr = err as {
+      status?: number | string;
+      statusCode?: number | string;
+      code?: number | string;
+      message?: string;
+      error?: { code?: number | string; status?: string; message?: string };
+    };
+    const status = anyErr.status ?? anyErr.statusCode ?? anyErr.error?.code ?? anyErr.code;
+    const message = anyErr.message || anyErr.error?.message || String(err);
+    return { status, message };
+  }
+  return { message: String(err) };
 }
 
 export interface SelfieValidationResult {
@@ -35,9 +58,11 @@ export async function validateSelfieWithGemini(
     };
   }
 
+  const checkModel = process.env.CHECK_MODEL || DEFAULT_CHECK_MODEL;
+
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-4-hydrogen',
+      model: checkModel,
       contents: {
         parts: [
           {
@@ -73,7 +98,8 @@ export async function validateSelfieWithGemini(
       reason: parsed.reason || 'Validation completed.',
     };
   } catch (err) {
-    console.warn('Gemini selfie check warning:', err instanceof Error ? err.message : err);
+    const { status, message } = extractGeminiErrorDetails(err);
+    console.error(`[Gemini validateSelfie] API failure (model=${checkModel}, status=${status ?? 'unknown'}): ${message}`);
     return {
       hasSingleClearFace: true,
       isAdultAppearing: true,
@@ -93,63 +119,87 @@ export class LookGenerationError extends Error {
 
 /**
  * Abstracted identity-preserving look generation service: generate_look(selfie, look_prompt)
- * Supports swapping models via Admin Settings (default: gemini-3.1-flash-lite-image).
+ * Uses IMAGE_MODEL env var or Admin Settings (default: gemini-2.5-flash-image).
  */
 export async function generateLook(
   selfieBuffer: Buffer,
   mimeType: string,
   lookPrompt: string,
-  modelName = 'gemini-3.1-flash-lite-image'
+  modelName = DEFAULT_IMAGE_MODEL
 ): Promise<{ imageBuffer: Buffer; mimeType: string }> {
   const ai = getAiClient();
   if (!ai) {
+    console.error('[Gemini generateLook] Missing GEMINI_API_KEY.');
     throw new LookGenerationError(
-      'GEMINI_API_KEY is not configured in Settings > Secrets. Add a billing-enabled Gemini API key or use Sample Demo Mode to preview the full Reclik flow.',
+      'Portrait generation is not configured right now. Please add a valid Gemini API key in Settings > Secrets or try Sample Demo Mode.',
       'MISSING_API_KEY'
     );
   }
 
-  const fullPrompt = `${lookPrompt}\n\nSTRICT IDENTITY RULES: Preserve the exact person's facial structure, eyes, nose, mouth, skin tone, and likeness from the reference selfie. Output a photorealistic portrait with no text or watermarks.`;
+  const targetModel = process.env.IMAGE_MODEL || modelName || DEFAULT_IMAGE_MODEL;
+  const fullPrompt = `${lookPrompt.trim()} ${LOOK_PROMPT_SUFFIX}`;
+
+  // Ensure uploaded selfie is downscaled to max 2048px on longest side with EXIF stripped before sending
+  const preparedSelfie = await sharp(selfieBuffer)
+    .rotate()
+    .resize({
+      width: 2048,
+      height: 2048,
+      fit: 'inside',
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: 92 })
+    .toBuffer();
 
   try {
     const response = await ai.models.generateContent({
-      model: modelName || 'gemini-3.1-flash-lite-image',
+      model: targetModel,
       contents: {
         parts: [
           {
             inlineData: {
-              data: selfieBuffer.toString('base64'),
-              mimeType,
+              data: preparedSelfie.toString('base64'),
+              mimeType: 'image/jpeg',
             },
           },
           { text: fullPrompt },
         ],
       },
-      config: {
-        imageConfig: {
-          aspectRatio: '3:4',
-        },
-      },
     });
 
-    for (const part of response.candidates?.[0]?.content?.parts ?? []) {
+    const parts = response.candidates?.[0]?.content?.parts ?? [];
+    const textReplies: string[] = [];
+
+    for (const part of parts) {
       if (part.inlineData?.data) {
         return {
           imageBuffer: Buffer.from(part.inlineData.data, 'base64'),
           mimeType: part.inlineData.mimeType ?? 'image/png',
         };
       }
+      if (part.text) {
+        textReplies.push(part.text);
+      }
     }
 
+    const loggedReply = textReplies.join('\n').trim() || response.text?.trim() || '(empty response)';
+    console.error(`[Gemini generateLook] Model (${targetModel}) returned no image part. Text reply: ${loggedReply}`);
+
     throw new LookGenerationError(
-      'The image model completed without returning an image. Please try another look or clearer selfie.',
+      'We could not generate a styled portrait for this photo. Please try a different look or upload a clearer front-facing selfie.',
       'MODEL_FAILED'
     );
   } catch (err: unknown) {
     if (err instanceof LookGenerationError) throw err;
-    const msg = err instanceof Error ? err.message : String(err);
-    const lower = msg.toLowerCase();
+
+    const { status, message } = extractGeminiErrorDetails(err);
+    console.error(`[Gemini generateLook] API failure (model=${targetModel}, status=${status ?? 'unknown'}): ${message}`);
+
+    const lower = message.toLowerCase();
+    const numericStatus = typeof status === 'number' ? status : Number(status);
     if (
+      numericStatus === 403 ||
+      numericStatus === 429 ||
       lower.includes('403') ||
       lower.includes('429') ||
       lower.includes('permission') ||
@@ -159,10 +209,14 @@ export async function generateLook(
       lower.includes('api_key_invalid')
     ) {
       throw new LookGenerationError(
-        'Image transformation requires a billing-enabled Gemini API key in Settings > Secrets. You can also test the complete workflow right now using Sample Demo Mode.',
+        'Portrait generation is temporarily unavailable due to API quota or billing limits. Please try again later or use Sample Demo Mode.',
         'PAID_KEY_REQUIRED'
       );
     }
-    throw new LookGenerationError(`Image generation failed: ${msg}`, 'MODEL_FAILED');
+
+    throw new LookGenerationError(
+      'We ran into an issue creating your portrait. Please try again or choose another look.',
+      'MODEL_FAILED'
+    );
   }
 }

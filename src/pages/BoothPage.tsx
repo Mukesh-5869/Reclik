@@ -28,7 +28,7 @@ async function analyzeAndResizeClientImage(file: File): Promise<{ blob: Blob; pr
           reject(new Error('Image is too small. Please choose a portrait at least 200px wide.'));
           return;
         }
-        const maxSide = 1400;
+        const maxSide = 2048;
         const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
         const w = Math.round(img.width * scale);
         const h = Math.round(img.height * scale);

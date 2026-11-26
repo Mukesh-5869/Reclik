@@ -949,11 +949,11 @@ export function AdminPage() {
                   <label className="block text-xs font-medium text-[#171412] dark:text-[#F5F2EC]">Gemini Image Model</label>
                   <select
                     disabled={!isSuper}
-                    value={sysSettings.generation_model ?? 'gemini-3.1-flash-lite-image'}
+                    value={sysSettings.generation_model ?? 'gemini-2.5-flash-image'}
                     onChange={(e) => setSysSettings({ ...sysSettings, generation_model: e.target.value })}
                     className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-black/15 dark:border-white/15 bg-[#F8F5EF] dark:bg-[#141210]"
                   >
-                    <option value="gemini-3.1-flash-lite-image">gemini-3.1-flash-lite-image</option>
+                    <option value="gemini-2.5-flash-image">gemini-2.5-flash-image</option>
                     <option value="gemini-nano-banana-2.1">gemini-nano-banana-2.1</option>
                     <option value="gemini-3-pro-image">gemini-3-pro-image</option>
                   </select>

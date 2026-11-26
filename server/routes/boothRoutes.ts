@@ -264,7 +264,7 @@ boothRouter.post('/booth/generate', checkBlocklistAndRateLimit, async (req: Boot
       rawOutputBuffer = fs.readFileSync(demoFile);
     } else {
       const selfieBuffer = fs.readFileSync(selfie.file_path);
-      const modelName = getSetting('generation_model', 'gemini-3.1-flash-lite-image');
+      const modelName = process.env.IMAGE_MODEL || getSetting('generation_model', 'gemini-2.5-flash-image');
       const generated = await generateLook(selfieBuffer, 'image/jpeg', look.prompt, modelName);
       rawOutputBuffer = generated.imageBuffer;
     }

@@ -47,7 +47,7 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   preview_max_px: '768',
   hd_max_px: '2048',
   max_upload_mb: '10',
-  generation_model: 'gemini-3.1-flash-lite-image',
+  generation_model: process.env.IMAGE_MODEL || 'gemini-2.5-flash-image',
   safety_moderation_enabled: 'true',
   selfie_retention_hours: '24',
   auto_delete_after_download: 'true',

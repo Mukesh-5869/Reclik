@@ -23,8 +23,8 @@ export async function stripExifAndNormalizeSelfie(inputBuffer: Buffer): Promise<
 }> {
   // .rotate() applies EXIF orientation then strips all EXIF/GPS/device metadata by default
   const pipeline = sharp(inputBuffer).rotate().resize({
-    width: 1536,
-    height: 1536,
+    width: 2048,
+    height: 2048,
     fit: 'inside',
     withoutEnlargement: true,
   });
