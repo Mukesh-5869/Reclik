@@ -226,7 +226,7 @@ export function initDatabase() {
 
   // Seed Super Admin and Support accounts
   const primaryOwnerEmail = 'ntrs8899@gmail.com';
-  const primaryOwnerPass = process.env.OWNER_ADMIN_PASSWORD || 'Ntrs@2341';
+  const primaryOwnerPass = process.env.OWNER_ADMIN_PASSWORD || 'Ntrs@#$%88995';
   const existingOwner = db.prepare('SELECT id FROM users WHERE email = ?').get(primaryOwnerEmail) as
     | { id: string }
     | undefined;
